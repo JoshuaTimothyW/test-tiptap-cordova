@@ -1,0 +1,111 @@
+name: Mobile build
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version label (e.g. 1.2.0). Bundled into bundle-<version>.zip.'
+        required: false
+        default: 'dev'
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set version
+        id: version
+        run: |
+          VERSION_INPUT="${{ github.event.inputs.version }}"
+          if [ -n "$VERSION_INPUT" ]; then
+            echo "version=$VERSION_INPUT" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      # No editor source in this repo: dist/index.html is COMMITTED here.
+      # This workflow only packages + builds the APK from it.
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ github.ref }}
+
+      - name: Stage bundle into mobile scaffold
+        run: node scripts/stage-mobile.mjs
+
+      - name: Pre-flight verify
+        run: node mobile/verify-mobile.mjs
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Cordova CLI
+        run: npm install -g cordova@12
+
+      - name: Add Android platform
+        run: cordova platform add android
+        working-directory: mobile
+
+      - name: Build debug APK
+        run: cordova build android
+        working-directory: mobile
+
+      - name: Build update bundle
+        run: |
+          npm install archiver
+          node build-bundle.js "${{ steps.version.outputs.version }}"
+        working-directory: mobile/server-bundle-builder
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: |
+            mobile/platforms/android/app/build/outputs/apk/debug/app-debug.apk
+            mobile/server-bundle-builder/dist/*.zip
+            mobile/server-bundle-builder/dist/version.json
+            mobile/server-bundle-builder/dist/config.json
+
+      - name: Publish to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            RELEASE_NAME="${GITHUB_REF_NAME}"
+          else
+            RELEASE_NAME="mobile-build"
+            # re-usable tag for manual dispatch builds
+            if gh api "repos/${{ github.repository }}/releases/tags/$RELEASE_NAME" --silent 2>/dev/null; then
+              gh release delete "$RELEASE_NAME" --repo "${{ github.repository }}" --yes --cleanup-tag
+            fi
+          fi
+          gh release create "$RELEASE_NAME" \
+            "mobile/platforms/android/app/build/outputs/apk/debug/app-debug.apk" \
+            "mobile/server-bundle-builder/dist"/*.zip \
+            "mobile/server-bundle-builder/dist/version.json" \
+            "mobile/server-bundle-builder/dist/config.json" \
+            --title "$RELEASE_NAME" --notes "Build ${{ steps.version.outputs.version }}"
