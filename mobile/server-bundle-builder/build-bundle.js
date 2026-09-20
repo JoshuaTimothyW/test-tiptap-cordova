@@ -14,7 +14,8 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const archiver = require('archiver');
+const archiverMod = require('archiver');
+const archiver = archiverMod.default || archiverMod; // archiver v8 = ESM namespace {default}
 
 const version = process.argv[2];
 if (!version) {

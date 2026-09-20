@@ -93,7 +93,7 @@ jobs:
 
       - name: Build update bundle
         run: |
-          npm install archiver
+          npm install archiver@7
           node build-bundle.js "${{ steps.version.outputs.version }}"
         working-directory: mobile/server-bundle-builder
 
