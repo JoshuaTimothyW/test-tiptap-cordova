@@ -150,18 +150,27 @@ function loadBundleIntoCurrentPage(entryPath) {
       }
     });
 
-    // 2. ganti body halaman ini dengan body bundle (tanpa script dulu)
+    // 2. ganti body halaman ini dengan body bundle.
     var newBody = document.importNode(doc.body, true);
-    var scripts = Array.prototype.slice.call(newBody.querySelectorAll('script'));
-    scripts.forEach(function (s) { s.parentNode.removeChild(s); }); // buang dulu, jalankan manual di bawah
+
+    // 2a. Kumpulkan SEMUA script (head DAN body, urutan dokumen) lalu buang.
+    //     PENTING: module script utama editor Vite ada di <head> bundle;
+    //     kalau hanya ambil script body, module itu tidak pernah jalan
+    //     -> DOM tersuntik tapi editor blank.
+    var scripts = [];
+    var headScripts = doc.head ? Array.prototype.slice.call(doc.head.querySelectorAll('script')) : [];
+    var bodyScripts = Array.prototype.slice.call(newBody.querySelectorAll('script'));
+    headScripts.forEach(function (s) { if (s.parentNode) s.parentNode.removeChild(s); });
+    bodyScripts.forEach(function (s) { if (s.parentNode) s.parentNode.removeChild(s); });
+    scripts = headScripts.concat(bodyScripts);
 
     document.body.innerHTML = '';
     while (newBody.firstChild) {
       document.body.appendChild(newBody.firstChild);
     }
 
-    // 3. jalankan ulang tiap <script> secara manual
-    //    (script yang masuk lewat innerHTML TIDAK auto-execute)
+    // 3. jalankan ulang tiap <script> secara manual (head dulu, baru body).
+    //    Script module dieksekusi async -> body sudah terisi saat ia jalan.
     scripts.forEach(function (oldScript) {
       var newScript = document.createElement('script');
       Array.prototype.forEach.call(oldScript.attributes, function (attr) {
