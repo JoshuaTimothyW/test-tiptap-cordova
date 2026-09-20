@@ -20,15 +20,18 @@
     <preference name="AllowInlineMediaPlayback" value="true" />
     <preference name="MixedContentMode" value="0" />
 
-    <!-- Jangan tampilkan splash screen (robot Cordova / logo default):
-         langsung ke editor. Kalau plugin splashscreen kebetulan ikut terpasang,
-         preferensi ini memaksanya menyembunyikan diri segera. -->
-    <preference name="SplashScreen" value="none" />
-    <preference name="SplashScreenDelay" value="0" />
-    <preference name="AutoHideSplashScreen" value="true" />
-    <preference name="FadeSplashScreen" value="false" />
+    <!-- Splash Android 12+ WAJIB ada (system splash), tak bisa dihapus total.
+         Prefs SplashScreen/SplashScreenDelay di bawah milik plugin splashscreen
+         (tidak terpasang) → diabaikan. Yang berlaku = AndroidWindowSplashScreen*.
+         Bagian bawah: blank icon (bukan robot Cordova) + bg putih + post-splash
+         theme LIGHT-only (bukan DayNight) supaya dark-mode OS tidak memaksa
+         WebView auto-dark. -->
     <preference name="BackgroundColor" value="0xFFFFFFFF" />
     <preference name="AndroidWindowSplashScreenBackground" value="#FFFFFF" />
+    <preference name="AndroidWindowSplashScreenAnimatedIcon" value="res/screen/blank_splash.xml" />
+    <preference name="AndroidWindowSplashScreenIconBackgroundColor" value="#FFFFFF" />
+    <preference name="AndroidWindowSplashScreenAnimationDuration" value="0" />
+    <preference name="AndroidPostSplashScreenTheme" value="@style/Theme.AppCompat.Light.NoActionBar" />
 
     <!-- spec harus versi eksplisit (cordova tidak kenal "latest").
     Versi di bawah = hasil `npm view <pkg> version` (side-effects ini ada di npm),
@@ -57,6 +60,13 @@
                     <data android:mimeType="text/*" />
                 </intent-filter>
             </activity>
+        </edit-config>
+
+        <!-- Matikan force-dark WebView level manifest (tema Light saja kadang
+             kurang: Auto-dark Android tetap menelanjangi halaman yang belum
+             deklarasi color-scheme). -->
+        <edit-config file="app/src/main/AndroidManifest.xml" target="/manifest/application" mode="merge">
+            <application android:forceDarkAllowed="false" />
         </edit-config>
 
         <!-- Izin akses internet, storage & notifikasi (Android 13+) -->
