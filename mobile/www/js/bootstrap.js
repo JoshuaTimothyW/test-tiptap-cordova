@@ -6,14 +6,16 @@ var FALLBACK_PAGE = 'editor-fallback.html'; // bundled, dipakai kalau belum pern
 
 var statusEl = document.getElementById('status');
 function setStatus(msg) {
-  if (statusEl) statusEl.textContent = msg;
+  if (!statusEl) return;
+  if (msg) { statusEl.textContent = msg; statusEl.style.display = ''; }
+  else     { statusEl.style.display = 'none'; }
   console.log('[bootstrap]', msg);
 }
 
 document.addEventListener('deviceready', onDeviceReady, false);
 
 function onDeviceReady() {
-  setStatus('Mengecek pembaruan editor...');
+  setStatus('');
   Notify.initPush();
   captureShareIntent(function () {
     runUpdateFlow();
@@ -133,7 +135,6 @@ function resolveEntry(targetDirPath) {
 // terus antar update).
 // ------------------------------------------------------------
 function redirectTo(entryPath) {
-  setStatus('Memuat editor...');
   return loadBundleIntoCurrentPage(entryPath);
 }
 
@@ -141,6 +142,14 @@ function loadBundleIntoCurrentPage(entryPath) {
   return readTextFile(entryPath).then(function (htmlText) {
     var parser = new DOMParser();
     var doc = parser.parseFromString(htmlText, 'text/html');
+
+    // 0. Buang CSS loading screen milik halaman ini — kalau dibiarkan,
+    //    `display:flex; align-items:center` dari #boot-styles tetap menimpa
+    //    bundle (editor tampil sempit di tengah, latar gelap #111).
+    var bootStyle = document.getElementById('boot-styles');
+    if (bootStyle && bootStyle.parentNode) {
+      bootStyle.parentNode.removeChild(bootStyle);
+    }
 
     // 1. pindahkan <link>/<style> dari head bundle ke head halaman ini
     var headNodes = doc.head ? Array.prototype.slice.call(doc.head.childNodes) : [];
