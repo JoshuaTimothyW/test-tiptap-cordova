@@ -1,15 +1,21 @@
 name: Mobile build
 
 on:
+  push:
+    - branches: [main]
+      paths: [dist/index.html]
+    - tags: ['v*']
   workflow_dispatch:
     inputs:
       version:
         description: 'Version label (e.g. 1.2.0). Bundled into bundle-<version>.zip.'
         required: false
-        default: 'dev'
-  push:
-    tags:
-      - 'v*'
+        default: ''
+      build_apk:
+        description: 'Build signed release APK?'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
@@ -21,7 +27,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set version
+      - name: Set version and flags
         id: version
         run: |
           VERSION_INPUT="${{ github.event.inputs.version }}"
@@ -30,7 +36,17 @@ jobs:
           elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
           else
-            echo "version=dev" >> "$GITHUB_OUTPUT"
+            # manual tanpa version / push index.html: versi unik per run,
+            # biar bootstrap.js (compare remote.version != localVersion) selalu deteksi update.
+            echo "version=dev-$(date +%Y%m%d-%H%M%S)" >> "$GITHUB_OUTPUT"
+          fi
+          # APK dibuild hanya: manual dgn flag build_apk=true, atau tag v*.
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "need_apk=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.build_apk }}" = "true" ]; then
+            echo "need_apk=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "need_apk=false" >> "$GITHUB_OUTPUT"
           fi
 
       # No editor source in this repo: dist/index.html is COMMITTED here.
@@ -41,12 +57,14 @@ jobs:
           node-version: 20
 
       - name: Setup JDK 17
+        if: steps.version.outputs.need_apk == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
       - name: Cache Gradle
+        if: steps.version.outputs.need_apk == 'true'
         uses: actions/cache@v4
         with:
           path: |
@@ -69,6 +87,7 @@ jobs:
       # understand the npm tag "latest" — spec must be a real version. Force the
       # known-good versions so a stale config.xml can't fail the build again.
       - name: Pin known-good plugin specs in config.xml
+        if: steps.version.outputs.need_apk == 'true'
         run: |
           sed -i 's|cordova-plugin-webintent" spec="[^"]*"|cordova-plugin-webintent" spec="0.0.2"|' mobile/config.xml
           sed -i 's|cordova-plugin-file-transfer" spec="[^"]*"|cordova-plugin-file-transfer" spec="2.0.1"|' mobile/config.xml
@@ -81,14 +100,40 @@ jobs:
           grep -n 'plugin name="cordova-plugin-\|xmlns:android=' mobile/config.xml
 
       - name: Install Cordova CLI
+        if: steps.version.outputs.need_apk == 'true'
         run: npm install -g cordova@12
 
       - name: Add Android platform
+        if: steps.version.outputs.need_apk == 'true'
         run: cordova platform add android
         working-directory: mobile
 
-      - name: Build debug APK
-        run: cordova build android
+      - name: Decode keystore + write build.json
+        if: steps.version.outputs.need_apk == 'true'
+        run: |
+          echo "$ANDROID_KEYSTORE_B64" | base64 -d > mobile/release-key.jks
+          cat > mobile/build.json <<EOF
+          {
+            "android": {
+              "release": {
+                "keystore": "./release-key.jks",
+                "storePassword": "$KEYSTORE_PASSWORD",
+                "alias": "$KEYSTORE_ALIAS",
+                "password": "$ALIAS_PASSWORD",
+                "keystoreType": ""
+              }
+            }
+          }
+          EOF
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEYSTORE_ALIAS: ${{ secrets.KEYSTORE_ALIAS }}
+          ALIAS_PASSWORD: ${{ secrets.ALIAS_PASSWORD }}
+
+      - name: Build signed release APK
+        if: steps.version.outputs.need_apk == 'true'
+        run: cordova build android --release --buildConfig build.json
         working-directory: mobile
 
       - name: Build update bundle
@@ -101,8 +146,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release
+          if-no-files-found: warn
           path: |
-            mobile/platforms/android/app/build/outputs/apk/debug/app-debug.apk
+            mobile/platforms/android/app/build/outputs/apk/release/app-release.apk
             mobile/server-bundle-builder/dist/*.zip
             mobile/server-bundle-builder/dist/version.json
             mobile/server-bundle-builder/dist/config.json
@@ -115,13 +161,16 @@ jobs:
             RELEASE_NAME="${GITHUB_REF_NAME}"
           else
             RELEASE_NAME="mobile-build"
-            # re-usable tag for manual dispatch builds
+            # re-usable tag for manual dispatch / auto-bundle builds
             if gh api "repos/${{ github.repository }}/releases/tags/$RELEASE_NAME" --silent 2>/dev/null; then
               gh release delete "$RELEASE_NAME" --repo "${{ github.repository }}" --yes --cleanup-tag
             fi
           fi
-          gh release create "$RELEASE_NAME" \
-            "mobile/platforms/android/app/build/outputs/apk/debug/app-debug.apk" \
+          APK_ARG=""
+          if [ -f mobile/platforms/android/app/build/outputs/apk/release/app-release.apk ]; then
+            APK_ARG="mobile/platforms/android/app/build/outputs/apk/release/app-release.apk"
+          fi
+          gh release create "$RELEASE_NAME" $APK_ARG \
             "mobile/server-bundle-builder/dist"/*.zip \
             "mobile/server-bundle-builder/dist/version.json" \
             "mobile/server-bundle-builder/dist/config.json" \
