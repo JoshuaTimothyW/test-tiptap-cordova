@@ -5,18 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
   <meta http-equiv="Content-Security-Policy"
     content="default-src * gap: file: content: data: blob: 'unsafe-inline' 'unsafe-eval'; style-src * 'unsafe-inline'; media-src *; img-src * data: content:;" />
-  <title>Loading...</title>
-  <style>
-    html, body {
-      margin: 0; height: 100%; background: #111;
-      display: flex; align-items: center; justify-content: center;
-      font-family: sans-serif; color: #aaa;
-    }
-    #status { font-size: 14px; }
+  <title>Notes</title>
+  <style id="boot-styles">
+    html, body { margin: 0; background: #fff; }
+    #status { display: none; }
   </style>
 </head>
 <body>
-  <div id="status">Menyiapkan editor...</div>
+  <div id="status"></div>
 
   <!-- library zip -->
   <script src="js/jszip.min.js"></script>
