@@ -2,9 +2,9 @@ name: Mobile build
 
 on:
   push:
-    - branches: [main]
-      paths: [dist/index.html]
-    - tags: ['v*']
+    branches: [main]
+    tags: ['v*']
+    paths: [dist/index.html]
   workflow_dispatch:
     inputs:
       version:
