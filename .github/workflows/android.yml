@@ -63,6 +63,16 @@ jobs:
       # No setup-android action: it runs `sdkmanager tools`, which cmdline-tools
       # 16 removed — hard failure. The runner image ships the full Android SDK
       # (ANDROID_HOME=/usr/local/lib/android/sdk) with licenses pre-accepted.
+      # Self-heal scaffold plugin specs. The scaffold shipped webintent@^3.0.0
+      # (never existed on npm) and local-notification@^0.9.0-beta.3 (pre-AndroidX
+      # beta). Both break `cordova platform add`. Force spec="latest" so a stale
+      # config.xml in this repo can't fail the build again.
+      - name: Pin plugin specs to latest in config.xml
+        run: |
+          sed -i 's|cordova-plugin-webintent" spec="[^"]*"|cordova-plugin-webintent" spec="latest"|' mobile/config.xml
+          sed -i 's|cordova-plugin-local-notification" spec="[^"]*"|cordova-plugin-local-notification" spec="latest"|' mobile/config.xml
+          grep -n 'plugin name="cordova-plugin-webintent"\|plugin name="cordova-plugin-local-notification"' mobile/config.xml
+
       - name: Install Cordova CLI
         run: npm install -g cordova@12
 
