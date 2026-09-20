@@ -42,12 +42,14 @@ jobs:
           fi
           # APK dibuild hanya: manual dgn flag build_apk=true, atau tag v*.
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            echo "need_apk=true" >> "$GITHUB_OUTPUT"
+            NEED_APK=true
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.build_apk }}" = "true" ]; then
-            echo "need_apk=true" >> "$GITHUB_OUTPUT"
+            NEED_APK=true
           else
-            echo "need_apk=false" >> "$GITHUB_OUTPUT"
+            NEED_APK=false
           fi
+          echo "need_apk=$NEED_APK" >> "$GITHUB_OUTPUT"
+          echo "resolved: event=${{ github.event_name }} ref=${{ github.ref }} build_apk=${{ github.event.inputs.build_apk }} need_apk=$NEED_APK"
 
       # No editor source in this repo: dist/index.html is COMMITTED here.
       # This workflow only packages + builds the APK from it.
@@ -136,6 +138,14 @@ jobs:
         run: cordova build android --release --buildConfig build.json
         working-directory: mobile
 
+      - name: Fail if no APK produced
+        if: steps.version.outputs.need_apk == 'true'
+        run: |
+          find mobile/platforms/android/app/build/outputs/apk -name '*.apk' -print 2>/dev/null || true
+          if [ -z "$(find mobile/platforms/android/app/build/outputs/apk -name '*.apk' 2>/dev/null | head -1)" ]; then
+            echo "::error::APK build diklaim sukses tapi tidak ada *.apk di output."; exit 1
+          fi
+
       - name: Build update bundle
         run: |
           npm install archiver@7
@@ -148,7 +158,7 @@ jobs:
           name: release
           if-no-files-found: warn
           path: |
-            mobile/platforms/android/app/build/outputs/apk/release/app-release.apk
+            mobile/platforms/android/app/build/outputs/apk/release/*.apk
             mobile/server-bundle-builder/dist/*.zip
             mobile/server-bundle-builder/dist/version.json
             mobile/server-bundle-builder/dist/config.json
@@ -167,9 +177,11 @@ jobs:
             fi
           fi
           APK_ARG=""
-          if [ -f mobile/platforms/android/app/build/outputs/apk/release/app-release.apk ]; then
-            APK_ARG="mobile/platforms/android/app/build/outputs/apk/release/app-release.apk"
+          APK="$(ls mobile/platforms/android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -1 || true)"
+          if [ -n "$APK" ]; then
+            APK_ARG="$APK"
           fi
+          echo "APK found: $APK"
           gh release create "$RELEASE_NAME" $APK_ARG \
             "mobile/server-bundle-builder/dist"/*.zip \
             "mobile/server-bundle-builder/dist/version.json" \
