@@ -73,7 +73,12 @@ jobs:
           sed -i 's|cordova-plugin-webintent" spec="[^"]*"|cordova-plugin-webintent" spec="0.0.2"|' mobile/config.xml
           sed -i 's|cordova-plugin-file-transfer" spec="[^"]*"|cordova-plugin-file-transfer" spec="2.0.1"|' mobile/config.xml
           sed -i 's|cordova-plugin-local-notification" spec="[^"]*"|cordova-plugin-local-notification" spec="1.2.3"|' mobile/config.xml
-          grep -n 'plugin name="cordova-plugin-' mobile/config.xml
+          # edit-config pakai atribut android:, wajib xmlns:android di <widget>,
+          # kalau tidak mergeDebugResources lempar AttributePrefixUnbound.
+          if ! grep -q 'xmlns:android=' mobile/config.xml; then
+            sed -i 's|xmlns:cdv="http://cordova.apache.org/ns/1.0"|xmlns:cdv="http://cordova.apache.org/ns/1.0" xmlns:android="http://schemas.android.com/apk/res/android"|' mobile/config.xml
+          fi
+          grep -n 'plugin name="cordova-plugin-\|xmlns:android=' mobile/config.xml
 
       - name: Install Cordova CLI
         run: npm install -g cordova@12
