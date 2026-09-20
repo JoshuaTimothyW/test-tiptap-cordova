@@ -20,6 +20,16 @@
     <preference name="AllowInlineMediaPlayback" value="true" />
     <preference name="MixedContentMode" value="0" />
 
+    <!-- Jangan tampilkan splash screen (robot Cordova / logo default):
+         langsung ke editor. Kalau plugin splashscreen kebetulan ikut terpasang,
+         preferensi ini memaksanya menyembunyikan diri segera. -->
+    <preference name="SplashScreen" value="none" />
+    <preference name="SplashScreenDelay" value="0" />
+    <preference name="AutoHideSplashScreen" value="true" />
+    <preference name="FadeSplashScreen" value="false" />
+    <preference name="BackgroundColor" value="0xFFFFFFFF" />
+    <preference name="AndroidWindowSplashScreenBackground" value="#FFFFFF" />
+
     <!-- spec harus versi eksplisit (cordova tidak kenal "latest").
     Versi di bawah = hasil `npm view <pkg> version` (side-effects ini ada di npm),
     yang sama dengan yang dipakai scaffold kecuali webintent (maks 0.0.2
