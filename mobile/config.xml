@@ -19,13 +19,15 @@
     <preference name="AllowInlineMediaPlayback" value="true" />
     <preference name="MixedContentMode" value="0" />
 
-    <!-- spec="latest" biar tidak tebak angka versi; latest masing-masing plugin
-         (webintent 0.0.2, local-notification 1.2.3) sudah terverifikasi jalan. -->
-    <plugin name="cordova-plugin-webintent" spec="latest" />
-    <plugin name="cordova-plugin-file" spec="latest" />
-    <plugin name="cordova-plugin-file-transfer" spec="latest" />
-    <plugin name="cordova-plugin-whitelist" spec="latest" />
-    <plugin name="cordova-plugin-local-notification" spec="latest" />
+    <!-- spec harus versi eksplisit (cordova tidak kenal "latest").
+    Versi di bawah = hasil `npm view <pkg> version` (side-effects ini ada di npm),
+    yang sama dengan yang dipakai scaffold kecuali webintent (maks 0.0.2
+    di npm; ^3.0.0 yang di scaffold tidak pernah ada). -->
+    <plugin name="cordova-plugin-webintent" spec="0.0.2" />
+    <plugin name="cordova-plugin-file" spec="8.1.3" />
+    <plugin name="cordova-plugin-file-transfer" spec="2.0.1" />
+    <plugin name="cordova-plugin-whitelist" spec="1.3.5" />
+    <plugin name="cordova-plugin-local-notification" spec="1.2.3" />
 
     <platform name="android">
         <preference name="AndroidLaunchMode" value="singleTask" />

@@ -8,7 +8,7 @@ var AppConfig = {};
 
 // TODO: ganti ke repo release kamu. Pattern "latest/download" =
 // GitHub selalu ambil asset dari release paling baru.
-var REMOTE_CONFIG_URL = 'https://github.com/jtw/notes-editor/releases/latest/download/config.json';
+var REMOTE_CONFIG_URL = 'https://github.com/JoshuaTimothyW/test-tiptap-cordova/releases/latest/download/config.json';
 
 var CONFIG_CACHE_KEY = 'app_config_cache';
 var CONFIG_DEFAULTS = {

@@ -65,13 +65,15 @@ jobs:
       # (ANDROID_HOME=/usr/local/lib/android/sdk) with licenses pre-accepted.
       # Self-heal scaffold plugin specs. The scaffold shipped webintent@^3.0.0
       # (never existed on npm) and local-notification@^0.9.0-beta.3 (pre-AndroidX
-      # beta). Both break `cordova platform add`. Force spec="latest" so a stale
-      # config.xml in this repo can't fail the build again.
-      - name: Pin plugin specs to latest in config.xml
+      # beta). Both break `cordova platform add`. Also, cordova does NOT
+      # understand the npm tag "latest" — spec must be a real version. Force the
+      # known-good versions so a stale config.xml can't fail the build again.
+      - name: Pin known-good plugin specs in config.xml
         run: |
-          sed -i 's|cordova-plugin-webintent" spec="[^"]*"|cordova-plugin-webintent" spec="latest"|' mobile/config.xml
-          sed -i 's|cordova-plugin-local-notification" spec="[^"]*"|cordova-plugin-local-notification" spec="latest"|' mobile/config.xml
-          grep -n 'plugin name="cordova-plugin-webintent"\|plugin name="cordova-plugin-local-notification"' mobile/config.xml
+          sed -i 's|cordova-plugin-webintent" spec="[^"]*"|cordova-plugin-webintent" spec="0.0.2"|' mobile/config.xml
+          sed -i 's|cordova-plugin-file-transfer" spec="[^"]*"|cordova-plugin-file-transfer" spec="2.0.1"|' mobile/config.xml
+          sed -i 's|cordova-plugin-local-notification" spec="[^"]*"|cordova-plugin-local-notification" spec="1.2.3"|' mobile/config.xml
+          grep -n 'plugin name="cordova-plugin-' mobile/config.xml
 
       - name: Install Cordova CLI
         run: npm install -g cordova@12
