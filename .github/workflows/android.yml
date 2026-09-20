@@ -121,8 +121,9 @@ jobs:
                 "keystore": "./release-key.jks",
                 "storePassword": "$KEYSTORE_PASSWORD",
                 "alias": "$KEYSTORE_ALIAS",
-                "password": "$ALIAS_PASSWORD",
-                "keystoreType": ""
+"password": "$ALIAS_PASSWORD",
+      "keystoreType": "",
+      "packageType": "apk"
               }
             }
           }
