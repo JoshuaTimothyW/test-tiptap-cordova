@@ -27,18 +27,32 @@ function onDeviceReady() {
 // ------------------------------------------------------------
 function captureShareIntent(done) {
   if (!window.plugins || !window.plugins.webintent) return done();
+  var wi = window.plugins.webintent;
 
-  window.plugins.webintent.getUri(function (uri) {
-    handleIncomingShare(uri);
-    done();
-  }, function () {
+  readShareText(wi, function (text) {
+    handleIncomingShare(text);
     done();
   });
 
   // kalau app sudah running di background dan menerima share baru
-  window.plugins.webintent.onNewIntent(function (uri) {
-    handleIncomingShare(uri);
+  wi.onNewIntent(function () {
+    readShareText(wi, function (text) {
+      handleIncomingShare(text);
+    });
   });
+}
+
+// ACTION_SEND text/plain menaruh isi share di EXTRA_TEXT, bukan data URI
+// (getUri = intent.getDataString(), untuk share teks biasanya null).
+// Jadi baca EXTRA_TEXT dulu, baru fallback ke URI.
+function readShareText(wi, cb) {
+  var fallbackUri = function () {
+    wi.getUri(function (uri) { cb(uri); }, function () { cb(null); });
+  };
+  wi.hasExtra(wi.EXTRA_TEXT, function (has) {
+    if (!has) return fallbackUri();
+    wi.getExtra(wi.EXTRA_TEXT, function (text) { cb(text); }, fallbackUri);
+  }, fallbackUri);
 }
 
 function handleIncomingShare(uri) {
