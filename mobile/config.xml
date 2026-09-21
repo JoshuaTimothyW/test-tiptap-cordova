@@ -46,21 +46,24 @@
     <platform name="android">
         <preference name="AndroidLaunchMode" value="singleTask" />
 
-        <!-- Share sheet: terima teks/link dari app lain -->
-        <edit-config file="app/src/main/AndroidManifest.xml" target="/manifest/application/activity" mode="merge">
-            <activity android:launchMode="singleTask">
-                <intent-filter>
-                    <action android:name="android.intent.action.SEND" />
-                    <category android:name="android.intent.category.DEFAULT" />
-                    <data android:mimeType="text/plain" />
-                </intent-filter>
-                <intent-filter>
-                    <action android:name="android.intent.action.SEND" />
-                    <category android:name="android.intent.category.DEFAULT" />
-                    <data android:mimeType="text/*" />
-                </intent-filter>
-            </activity>
-        </edit-config>
+        <!-- Share sheet: terima teks/link dari app lain.
+             Pakai config-file (append intent-filter ke activity yang ada),
+             BUKAN edit-config: edit-config target /manifest/application/activity
+             tidak pernah ter-merge ke AndroidManifest hasil build (terverifikasi
+             di APK rilis — SEND/text/plain tidak ada), sedangkan config-file
+             (dipakai blok izin di bawah) terbukti jalan. -->
+        <config-file target="AndroidManifest.xml" parent="/manifest/application/activity">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/*" />
+            </intent-filter>
+        </config-file>
 
         <!-- Matikan force-dark WebView level manifest (tema Light saja kadang
              kurang: Auto-dark Android tetap menelanjangi halaman yang belum
