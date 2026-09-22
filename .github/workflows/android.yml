@@ -112,14 +112,14 @@ jobs:
 
       # Android 13+ WebView ignores manifest forceDarkAllowed for targetSdk 34+;
       # the real switch is setAlgorithmicDarkeningAllowed(false) in the WebView.
-      # Local plugin does that (and FORCE_DARK_OFF on API 29-32) so device dark
-      # mode can't invert the editor. Gate: fail if the source didn't land.
-      - name: Add disable-auto-dark plugin
+      # Patch CordovaLib to do that (and FORCE_DARK_OFF on API 29-32) so device
+      # dark mode can't invert the editor. Gate: fail if the patch didn't land.
+      - name: Patch WebView dark mode off
         if: steps.version.outputs.need_apk == 'true'
         run: |
-          cordova plugin add ./plugins/cordova-plugin-disable-auto-dark
-          grep -rln "setAlgorithmicDarkeningAllowed" platforms/android/app/src/main/java \
-            || { echo "::error::disable-auto-dark plugin not applied"; exit 1; }
+          node patch-dark-mode.mjs
+          grep -q "setAlgorithmicDarkeningAllowed" platforms/android/CordovaLib/src/org/apache/cordova/engine/SystemWebView.java \
+            || { echo "::error::webview dark-mode patch not applied"; exit 1; }
         working-directory: mobile
 
       - name: Decode keystore + write build.json
