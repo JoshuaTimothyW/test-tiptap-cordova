@@ -24,11 +24,13 @@ const SNIPPET = '' +
   '    public SystemWebView(Context context, AttributeSet attrs) {\n' +
   '        super(context, attrs);\n' +
   '        // [patch:disable-dark] the webview must never invert to device dark mode\n' +
+  '        // Reflection: compiled against an older android.jar, and the API set differs per level.\n' +
   '        try {\n' +
   '            if (android.os.Build.VERSION.SDK_INT >= 33) {\n' +
-  '                setAlgorithmicDarkeningAllowed(false);\n' +
+  '                android.webkit.WebView.class.getMethod("setAlgorithmicDarkeningAllowed", boolean.class).invoke(this, false);\n' +
   '            } else if (android.os.Build.VERSION.SDK_INT >= 29) {\n' +
-  '                getSettings().setForceDark(android.webkit.WebSettings.FORCE_DARK_OFF);\n' +
+  '                android.webkit.WebSettings s = getSettings();\n' +
+  '                s.getClass().getMethod("setForceDark", int.class).invoke(s, 1); // FORCE_DARK_OFF\n' +
   '            }\n' +
   '        } catch (Throwable ignored) {}\n' +
   '    }\n'
