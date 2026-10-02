@@ -4,30 +4,15 @@
 var EDITOR_DIR_NAME = 'editor-current';
 var FALLBACK_PAGE = 'editor-fallback.html'; // bundled, dipakai kalau belum pernah online
 
-var statusEl = document.getElementById('status');
-// CATATAN: boot-styles menaruh `#status { display: none }`. Karena itu kalau
-// msg diisi, display harus di-set EXPLICIT ke 'block' -- `display = ''` hanya
-// menghapus inline style sehingga rulesheet display:none menang lagi dan
-// pesan error tidak pernah kelihatan di layar.
+// Diagnostics TIDAK pernah ditampilkan di atas editor -- cukup di Settings
+// (baris "Update error"). Banner di halaman cuma ganggu.
 function setStatus(msg, isError) {
+  if (!msg) return;
   console.log('[bootstrap]', isError ? 'ERROR: ' + msg : msg);
-  if (!statusEl) return;
-  if (!msg) { statusEl.style.display = 'none'; return; }
-  // Body di-swap saat transplant bundle, jadi elemen #status jadi detached.
-  // Sambung ulang supaya banner error tetep kelihatan di atas editor.
-  if (!statusEl.isConnected && document.body) document.body.appendChild(statusEl);
-  statusEl.textContent = msg;
-  statusEl.style.display = 'block';
-  statusEl.style.padding = '12px 16px';
-  statusEl.style.font = '13px/1.5 system-ui,sans-serif';
-  statusEl.style.background = isError ? '#fdecec' : '#eef2ff';
-  statusEl.style.color = isError ? '#a11212' : '#312e81';
-  // Kesimpen juga, biar kegagalannya masih bisa dibaca dari Settings
-  // walau app sempat reload/ditutup sebelumPesan sempat terlihat.
-  try {
-    if (isError) localStorage.setItem('editor_update_error', String(msg));
-    else localStorage.removeItem('editor_update_error');
-  } catch (e) {}
+  // Kesimpen supaya kegagalannya masih bisa dibaca dari Settings walau app
+  // sempat reload/ditutup. Hapus hanya kalau update berikutnya sukses.
+  if (!isError) return;
+  try { localStorage.setItem('editor_update_error', String(msg)); } catch (e) {}
 }
 
 document.addEventListener('deviceready', onDeviceReady, false);
@@ -119,8 +104,10 @@ function doUpdate(localVersion, targetDirPath) {
       if (remote.version !== localVersion) {
         setStatus('Update available (v' + remote.version + '), downloading...');
         return downloadAndExtractBundle(remote, targetDirPath).then(function () {
-          localStorage.setItem('editor_version', remote.version);
-          Notify.updateInstalled(remote.version);
+localStorage.setItem('editor_version', remote.version);
+        // Update sukses -> error lama (kalau ada) sudah tidak relevan.
+        localStorage.removeItem('editor_update_error');
+        Notify.updateInstalled(remote.version);
           return targetDirPath + 'index.html';
         });
       } else {
@@ -149,12 +136,16 @@ function doUpdate(localVersion, targetDirPath) {
     });
 }
 
+// Pakai nativeFetchText (FileTransfer), bukan fetch(): halaman ini ber-origin
+// file:// dan GitHub tidak mengirim access-control-allow-origin, jadi fetch()
+// selalu kena blok CORS. Lihat catatan di config.js.
 function fetchVersionInfo(versionUrl) {
-  return fetch(versionUrl, { cache: 'no-store' })
-    .then(function (res) {
-      if (!res.ok) throw new Error('version fetch failed: ' + res.status);
-      return res.json(); // { version: "1.2.0", checksum: "..." }
-    });
+  return new Promise(function (resolve, reject) {
+    nativeFetchText(versionUrl, function (text) {
+      try { resolve(JSON.parse(text)); } // { version: "1.2.0", checksum: "..." }
+      catch (e) { reject(new Error('version JSON rusak: ' + e.message)); }
+    }, reject);
+  });
 }
 
 // kalau versi sudah sama / offline: pakai extract folder yg ada, atau fallback
@@ -239,11 +230,6 @@ function loadBundleIntoCurrentPage(entryPath) {
     //    dipanggil langsung di bagian bawah script (bukan lewat
     //    addEventListener('DOMContentLoaded', ...)).
     document.dispatchEvent(new Event('bundleReady'));
-
-    // Kalau ada kegagalan update yang tercatat, tetap tampilkan banner-nya
-    // di atas editor yang baru disuntik -- jangan dihilangin di sini.
-    var prevErr = localStorage.getItem('editor_update_error');
-    setStatus(prevErr || '', !!prevErr);
   });
 }
 

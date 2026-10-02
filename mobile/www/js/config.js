@@ -25,24 +25,50 @@ function resolveUrl(baseUrl, endpoint) {
   return base + endpoint;
 }
 
+// fetch() dari halaman file:// ke release asset GitHub SELALU gagal:
+// GitHub nggak mengirim header access-control-allow-origin sama sekali (dan
+// URL-nya butuh 2x 302 ke release-assets.githubusercontent.com), jadi CORS
+// memblokir pembacaannya. setAllowUniversalAccessFromFileURLs() juga default
+// false di cordova-android. FileTransfer jalan di layer native, jadi sama
+// sekali nggak kena CORS -- itu satu-satunya cara app ini bisa baca
+// config.json / version.json dari GitHub.
+function nativeFetchText(url, ok, fail) {
+  var tmp = cordova.file.cacheDirectory + 'meta-' + Date.now() + '.tmp';
+  var cleanup = function () { try { cordova.file.remove(tmp); } catch (e) {} };
+  new FileTransfer().download(url, tmp, function () {
+    window.resolveLocalFileSystemURL(tmp, function (entry) {
+      entry.file(function (file) {
+        var reader = new FileReader();
+        reader.onloadend = function () { cleanup(); ok(reader.result); };
+        reader.onerror = function () { cleanup(); fail(new Error('baca file gagal')); };
+        reader.readAsText(file);
+      }, fail);
+    }, fail);
+  }, function (err) {
+    cleanup();
+    fail(new Error('download failed: ' + JSON.stringify(err)));
+  }, false);
+}
+
 AppConfig.get = function () {
   var cached = {};
   try { cached = JSON.parse(localStorage.getItem(CONFIG_CACHE_KEY) || '{}'); } catch (e) {}
 
-  return fetch(REMOTE_CONFIG_URL, { cache: 'no-store' })
-    .then(function (res) {
-      if (!res.ok) throw new Error('config fetch failed: ' + res.status);
-      return res.json();
-    })
-    .then(function (json) {
-      var merged = Object.assign({}, cached, json, { configUrl: REMOTE_CONFIG_URL });
-      try { localStorage.setItem(CONFIG_CACHE_KEY, JSON.stringify(merged)); } catch (e) {}
-      return merged;
-    })
-    .catch(function () {
-      // offline / gagal fetch: pakai config terakhir yang pernah ada, atau default
-      return Object.assign({}, cached, { configUrl: REMOTE_CONFIG_URL });
-    });
+  return new Promise(function (resolve) {
+    nativeFetchText(REMOTE_CONFIG_URL,
+      function (text) {
+        var merged;
+        try { merged = Object.assign({}, cached, JSON.parse(text), { configUrl: REMOTE_CONFIG_URL }); }
+        catch (e) { merged = Object.assign({}, cached, { configUrl: REMOTE_CONFIG_URL }); }
+        try { localStorage.setItem(CONFIG_CACHE_KEY, JSON.stringify(merged)); } catch (e) {}
+        resolve(merged);
+      },
+      function (err) {
+        // offline / gagal ambil: pakai config terakhir yang pernah ada, atau default
+        console.warn('[config]', err && err.message);
+        resolve(Object.assign({}, cached, { configUrl: REMOTE_CONFIG_URL }));
+      });
+  });
 };
 
 // Resolve semua endpoint config ke URL absolut berdasarkan config yang ada.
