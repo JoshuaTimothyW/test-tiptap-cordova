@@ -5,11 +5,29 @@ var EDITOR_DIR_NAME = 'editor-current';
 var FALLBACK_PAGE = 'editor-fallback.html'; // bundled, dipakai kalau belum pernah online
 
 var statusEl = document.getElementById('status');
-function setStatus(msg) {
+// CATATAN: boot-styles menaruh `#status { display: none }`. Karena itu kalau
+// msg diisi, display harus di-set EXPLICIT ke 'block' -- `display = ''` hanya
+// menghapus inline style sehingga rulesheet display:none menang lagi dan
+// pesan error tidak pernah kelihatan di layar.
+function setStatus(msg, isError) {
+  console.log('[bootstrap]', isError ? 'ERROR: ' + msg : msg);
   if (!statusEl) return;
-  if (msg) { statusEl.textContent = msg; statusEl.style.display = ''; }
-  else     { statusEl.style.display = 'none'; }
-  console.log('[bootstrap]', msg);
+  if (!msg) { statusEl.style.display = 'none'; return; }
+  // Body di-swap saat transplant bundle, jadi elemen #status jadi detached.
+  // Sambung ulang supaya banner error tetep kelihatan di atas editor.
+  if (!statusEl.isConnected && document.body) document.body.appendChild(statusEl);
+  statusEl.textContent = msg;
+  statusEl.style.display = 'block';
+  statusEl.style.padding = '12px 16px';
+  statusEl.style.font = '13px/1.5 system-ui,sans-serif';
+  statusEl.style.background = isError ? '#fdecec' : '#eef2ff';
+  statusEl.style.color = isError ? '#a11212' : '#312e81';
+  // Kesimpen juga, biar kegagalannya masih bisa dibaca dari Settings
+  // walau app sempat reload/ditutup sebelumPesan sempat terlihat.
+  try {
+    if (isError) localStorage.setItem('editor_update_error', String(msg));
+    else localStorage.removeItem('editor_update_error');
+  } catch (e) {}
 }
 
 document.addEventListener('deviceready', onDeviceReady, false);
@@ -99,7 +117,7 @@ function doUpdate(localVersion, targetDirPath) {
       if (!remote) throw new Error('no remote info');
 
       if (remote.version !== localVersion) {
-        setStatus('Update tersedia (v' + remote.version + '), mengunduh...');
+        setStatus('Update available (v' + remote.version + '), downloading...');
         return downloadAndExtractBundle(remote, targetDirPath).then(function () {
           localStorage.setItem('editor_version', remote.version);
           Notify.updateInstalled(remote.version);
@@ -110,13 +128,23 @@ function doUpdate(localVersion, targetDirPath) {
       }
     })
     .catch(function (err) {
+      // SEMUA kegagalan (config fetch, version fetch, download, ekstrak)
+      // sebelumnya ketelan jadi satu perilaku yang sama dengan "sudah
+      // terbaru": resolveEntry -> fallback. Dari luar keduanya identik,
+      // jadi user tidak pernah tahu hot-update-nya gagal. Sekarang
+      // alasannya ditulis ke layar + localStorage.
+      var why = (err && err.message) ? err.message : String(err);
+      setStatus('Update failed: ' + why, true);
       console.warn('update check gagal, fallback ke cache/local', err);
       return resolveEntry(targetDirPath);
     })
     .then(function (entryUrl) {
       redirectTo(entryUrl);
     })
-    .catch(function () {
+    .catch(function (err) {
+      var why2 = (err && err.message) ? err.message : String(err);
+      setStatus('Editor failed to load: ' + why2, true);
+      console.warn('editor gagal dimuat, fallback', err);
       redirectTo(FALLBACK_PAGE);
     });
 }
@@ -212,7 +240,10 @@ function loadBundleIntoCurrentPage(entryPath) {
     //    addEventListener('DOMContentLoaded', ...)).
     document.dispatchEvent(new Event('bundleReady'));
 
-    setStatus('');
+    // Kalau ada kegagalan update yang tercatat, tetap tampilkan banner-nya
+    // di atas editor yang baru disuntik -- jangan dihilangin di sini.
+    var prevErr = localStorage.getItem('editor_update_error');
+    setStatus(prevErr || '', !!prevErr);
   });
 }
 
@@ -234,7 +265,7 @@ function readTextFile(pathOrRelative) {
   // path relatif (FALLBACK_PAGE, bundled asset di www/) -> fetch biasa,
   // origin sama dengan bootstrap jadi aman dan IndexedDB tetap nyambung
   return fetch(pathOrRelative).then(function (res) {
-    if (!res.ok) throw new Error('gagal load fallback: ' + res.status);
+    if (!res.ok) throw new Error('failed to load fallback: ' + res.status);
     return res.text();
   });
 }
@@ -252,12 +283,12 @@ function downloadAndExtractBundle(remote, targetDirPath) {
       bundleUrl,
       tmpZipPath,
       function (fileEntry) { resolve(fileEntry); },
-      function (err) { reject(new Error('download gagal: ' + JSON.stringify(err))); },
+      function (err) { reject(new Error('download failed: ' + JSON.stringify(err))); },
       false
     );
   })
   .then(function () {
-    setStatus('Mengekstrak...');
+    setStatus('Extracting...');
     return readFileAsArrayBuffer(tmpZipPath);
   })
   .then(function (arrayBuffer) {

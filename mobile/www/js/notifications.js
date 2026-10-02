@@ -20,7 +20,7 @@ Notify.setPushConfig = function (cfg) {
 // ------------------------------------------------------------
 Notify.local = function (title, text, extra) {
   if (!(window.cordova && cordova.plugins && cordova.plugins.notification)) {
-    console.warn('[notify] local-notification plugin belum ready');
+    console.warn('[notify] local-notification plugin not yet ready');
     return;
   }
   cordova.plugins.notification.local.schedule({
@@ -34,12 +34,12 @@ Notify.local = function (title, text, extra) {
 };
 
 Notify.updateInstalled = function (version) {
-  Notify.local('Editor diperbarui', 'Versi ' + version + ' siap dipakai.');
+  Notify.local('Editor updated', 'to version ' + version);
 };
 
 Notify.shareReceived = function (contentPreview) {
   var preview = String(contentPreview || '').slice(0, 80);
-  Notify.local('Konten diterima', preview);
+  Notify.local('Content received', preview);
 };
 
 // ------------------------------------------------------------
