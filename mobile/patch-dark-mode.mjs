@@ -2,6 +2,12 @@
 // device dark mode. The manifest forceDarkAllowed attr is ignored on Android
 // 13+/targetSdk 34 (algorithmic darkening is a WebView API), so we disable it
 // in code: setAlgorithmicDarkeningAllowed(false) (API 33+) / FORCE_DARK_OFF (29-32).
+//
+// Also locks pinch/double-tap zoom there. The viewport meta route
+// (user-scalable=no) did NOT work on the device, and cordova-android's
+// initWebViewSettings() never configures zoom at all (no AndroidEnableZoom
+// preference), so the settings are simply left on the WebView default.
+//
 // Idempotent. Run from mobile/ after `cordova platform add android`.
 import fs from 'node:fs'
 import path from 'node:path'
@@ -32,6 +38,14 @@ const SNIPPET = '' +
   '                android.webkit.WebSettings s = getSettings();\n' +
   '                s.getClass().getMethod("setForceDark", int.class).invoke(s, 1); // FORCE_DARK_OFF\n' +
   '            }\n' +
+  '        } catch (Throwable ignored) {}\n' +
+  '        // [patch:disable-zoom] lock scale like a native app. Safe here:\n' +
+  '        // initWebViewSettings() never calls any set*Zoom*, so nothing overrides this.\n' +
+  '        try {\n' +
+  '            android.webkit.WebSettings z = getSettings();\n' +
+  '            z.setSupportZoom(false);\n' +
+  '            z.setBuiltInZoomControls(false);\n' +
+  '            z.setDisplayZoomControls(false);\n' +
   '        } catch (Throwable ignored) {}\n' +
   '    }\n'
 
