@@ -20,17 +20,26 @@ Notify.setPushConfig = function (cfg) {
 // ------------------------------------------------------------
 Notify.local = function (title, text, extra) {
   if (!(window.cordova && cordova.plugins && cordova.plugins.notification)) {
-    console.warn('[notify] local-notification plugin not yet ready');
+    console.warn('[notify] local-notification plugin belum ready');
     return;
   }
-  cordova.plugins.notification.local.schedule({
-    id: Date.now() % 1000000,
-    title: title,
-    text: text,
-    foreground: true,
-    smallIcon: 'res://ic_stat_notify',
-    data: extra || {}
-  });
+  try {
+    cordova.plugins.notification.local.schedule({
+      id: Date.now() % 1000000,
+      title: title,
+      text: text,
+      foreground: true,
+      smallIcon: 'res://ic_stat_notify',
+      data: extra || {}
+    });
+  } catch (e) {
+    // Notifikasi itu kosmetik. Kalau plugin throw (mis. smallIcon 'res://'
+    // yang resource-nya ga ada di res/), JANGAN biarkan caller ikut gagal --
+    // Notify.updateInstalled dipanggil di dalam chain yang menentukan
+    // sukses/tidaknya hot-update, jadi satu throw di sini akan melabeli
+    // update yg sudah berhasil_extract sebagai "Update failed".
+    console.warn('[notify] schedule gagal:', e);
+  }
 };
 
 Notify.updateInstalled = function (version) {
