@@ -3,6 +3,7 @@
 // ============================================================
 var EDITOR_DIR_NAME = 'editor-current';
 var FALLBACK_PAGE = 'editor-fallback.html'; // bundled, dipakai kalau belum pernah online
+var STAGING_DIR_NAME = 'editor-staging'; // extract sementara, lalu di-swap kalau utuh
 
 // Diagnostics TIDAK pernah ditampilkan di atas editor -- cukup di Settings
 // (baris "Update error"). Banner di halaman cuma ganggu.
@@ -21,7 +22,9 @@ function onDeviceReady() {
   setStatus('');
   Notify.initPush();
   captureShareIntent(function () {
-    runUpdateFlow();
+    // Startup TANPA jaringan: langsung inject bundle yang ada. Update
+    // di-check manual lewat Settings (window.__updateCheck).
+    showEditorNow();
   });
 }
 
@@ -75,64 +78,72 @@ function handleIncomingShare(uri) {
 }
 
 // ------------------------------------------------------------
-// 2. Cek versi, download bundle baru kalau ada, lalu redirect
+// 2. Startup: TANPA jaringan. Langsung inject bundle terakhir yang
+// sudah ada (editor-current/), atau fallback bawaan APK kalau belum
+// pernah update. Cek update hanya manual dari Settings.
 // ------------------------------------------------------------
 var configState = { versionUrl: '', bundleUrlTemplate: '' };
 
-function runUpdateFlow() {
+function showEditorNow() {
+  var targetDirPath = cordova.file.dataDirectory + EDITOR_DIR_NAME + '/';
+  resolveEntry(targetDirPath)
+    .then(redirectTo)
+    .catch(function (err) {
+      var why = (err && err.message) ? err.message : String(err);
+      setStatus('Editor failed to load: ' + why, true);
+      redirectTo(FALLBACK_PAGE);
+    });
+}
+
+// ------------------------------------------------------------
+// 3. UPDATE MANUAL (Settings > Check for updates)
+// Editor dan bootstrap satu window/halaman (bundle di-inject ke
+// halaman boot), jadi editor cukup memanggil window.__updateCheck().
+// Download+ekstrak jalan sendiri; bundle baru dipakai saat halaman
+// di-reload. Berlindung dari double-tap (running/promise).
+// ------------------------------------------------------------
+var updateCheckState = { running: false, promise: null };
+
+window.__updateCheck = function () {
+  if (updateCheckState.running) return updateCheckState.promise;
   var localVersion = localStorage.getItem('editor_version') || '0';
   var targetDirPath = cordova.file.dataDirectory + EDITOR_DIR_NAME + '/';
 
-  AppConfig.get()
+  updateCheckState.running = true;
+  updateCheckState.promise = AppConfig.get()
     .then(function (cfg) {
       configState = AppConfig.endpoints(cfg);
-      Notify.setPushConfig(cfg); // pushRegisterUrl/pushTopic untuk register token
+      Notify.setPushConfig(cfg);
       return doUpdate(localVersion, targetDirPath);
     })
-    .catch(function () {
-      console.warn('config gagal, pakai default');
-      configState = AppConfig.endpoints({});
-      return doUpdate(localVersion, targetDirPath);
+    .then(function (res) {
+      updateCheckState.running = false;
+      return res;
+    })
+    .catch(function (err) {
+      updateCheckState.running = false;
+      var why = (err && err.message) ? err.message : String(err);
+      setStatus('Update failed: ' + why, true);
+      return { status: 'error', message: why };
     });
-}
+  return updateCheckState.promise;
+};
 
 function doUpdate(localVersion, targetDirPath) {
   return fetchVersionInfo(configState.versionUrl)
     .then(function (remote) {
-      if (!remote) throw new Error('no remote info');
-
-      if (remote.version !== localVersion) {
-        setStatus('Update available (v' + remote.version + '), downloading...');
-        return downloadAndExtractBundle(remote, targetDirPath).then(function () {
-localStorage.setItem('editor_version', remote.version);
-        // Update sukses -> error lama (kalau ada) sudah tidak relevan.
-        localStorage.removeItem('editor_update_error');
-        Notify.updateInstalled(remote.version);
-          return targetDirPath + 'index.html';
+      if (!remote || remote.version == null) throw new Error('remote info tidak valid');
+      if (remote.version === localVersion) return { status: 'up-to-date', version: localVersion };
+      setStatus('Update available (v' + remote.version + '), downloading...');
+      return downloadAndExtractBundle(remote, targetDirPath)
+        .then(function () {
+          // Update sukses -> error lama (kalau ada) sudah tidak relevan.
+          localStorage.setItem('editor_version', remote.version);
+          localStorage.removeItem('editor_update_error');
+          Notify.updateInstalled(remote.version);
+          setStatus('');
+          return { status: 'updated', version: remote.version };
         });
-      } else {
-        return resolveEntry(targetDirPath);
-      }
-    })
-    .catch(function (err) {
-      // SEMUA kegagalan (config fetch, version fetch, download, ekstrak)
-      // sebelumnya ketelan jadi satu perilaku yang sama dengan "sudah
-      // terbaru": resolveEntry -> fallback. Dari luar keduanya identik,
-      // jadi user tidak pernah tahu hot-update-nya gagal. Sekarang
-      // alasannya ditulis ke layar + localStorage.
-      var why = (err && err.message) ? err.message : String(err);
-      setStatus('Update failed: ' + why, true);
-      console.warn('update check gagal, fallback ke cache/local', err);
-      return resolveEntry(targetDirPath);
-    })
-    .then(function (entryUrl) {
-      redirectTo(entryUrl);
-    })
-    .catch(function (err) {
-      var why2 = (err && err.message) ? err.message : String(err);
-      setStatus('Editor failed to load: ' + why2, true);
-      console.warn('editor gagal dimuat, fallback', err);
-      redirectTo(FALLBACK_PAGE);
     });
 }
 
@@ -262,6 +273,7 @@ function readTextFile(pathOrRelative) {
 function downloadAndExtractBundle(remote, targetDirPath) {
   var bundleUrl = configState.bundleUrlTemplate.replace('{version}', remote.version);
   var tmpZipPath = cordova.file.cacheDirectory + 'bundle-' + remote.version + '.zip';
+  var stagingPath = cordova.file.dataDirectory + STAGING_DIR_NAME + '/';
 
   return new Promise(function (resolve, reject) {
     var ft = new FileTransfer();
@@ -281,13 +293,34 @@ function downloadAndExtractBundle(remote, targetDirPath) {
     return JSZip.loadAsync(arrayBuffer);
   })
   .then(function (zip) {
-    return removeDirIfExists(targetDirPath)
-      .then(function () { return ensureDir(targetDirPath); })
-      .then(function () { return extractZipTo(zip, targetDirPath); });
+    // Extract ke staging dulu, swap ke editor-current cuma kalau
+    // bundle utuh (index.html ada). Kalau gagal di tengah, bundle
+    // yang sedang dipakai tidak ikut terhapus.
+    return removeDirIfExists(stagingPath)
+      .then(function () { return ensureDir(stagingPath); })
+      .then(function () { return extractZipTo(zip, stagingPath); })
+      .then(function () {
+        return fileExists(stagingPath + 'index.html').then(function (exists) {
+          if (!exists) throw new Error('bundle rusak: index.html tidak ditemukan');
+          return removeDirIfExists(targetDirPath)
+            .then(function () { return moveDirTo(stagingPath, EDITOR_DIR_NAME); });
+        });
+      });
   })
   .then(function () {
     // opsional: verifikasi checksum di sini kalau server menyediakan
     return true;
+  });
+}
+
+// Pindahkan folder hasil extract (staging) menjadi bundle aktif.
+function moveDirTo(fromPath, newName) {
+  return new Promise(function (resolve, reject) {
+    window.resolveLocalFileSystemURL(fromPath, function (fromDir) {
+      window.resolveLocalFileSystemURL(cordova.file.dataDirectory, function (parentDir) {
+        fromDir.moveTo(parentDir, newName, function () { resolve(); }, reject);
+      }, reject);
+    }, reject);
   });
 }
 
